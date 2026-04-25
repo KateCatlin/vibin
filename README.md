@@ -181,6 +181,7 @@ Statuses are:
 - `✅ PASS` — no medium-or-higher findings were found
 - `⚠️ WARN` — medium or high findings were found
 - `⛔ FAIL` — at least one critical finding was found
+- `💥 ERROR` — the check could not complete due to an unexpected error
 
 ## Exit codes
 

@@ -9,8 +9,12 @@ export interface SecurityOptions {
 
 export async function runSecurity(context: RunContext, options: SecurityOptions = {}): Promise<{ result: CheckResult; markdown: string }> {
   const startedAt = new Date().toISOString();
-  const findings = sortFindings(await runSecurityScanners(context.cwd));
-  const ai = await resolveAiProvider(context.env);
+  context.progress?.info('Scanning source files, tracked env files, and dependencies.');
+  const findings = sortFindings(await runSecurityScanners(context.cwd, context.progress));
+  context.progress?.info(`Security scanners found ${findings.length} finding${findings.length === 1 ? '' : 's'}.`);
+  context.progress?.info('Resolving AI backend for security review.');
+  const ai = await resolveAiProvider(context.env, context.progress);
+  context.progress?.info(`Requesting security review from ${ai.name}.`);
   const aiResponse = await ai.generateText({
     system:
       'You are vibin, a pragmatic pre-launch security reviewer for fast-moving app builders. Be direct, prioritize exploitable issues, and suggest concrete fixes.',
@@ -19,8 +23,10 @@ export async function runSecurity(context: RunContext, options: SecurityOptions 
       'Call out likely false positives, missing-auth concerns worth verifying, and the most important deploy blockers.',
       '',
       JSON.stringify({ cwd: context.cwd, findings }, null, 2)
-    ].join('\n')
+    ].join('\n'),
+    progress: context.progress
   });
+  context.progress?.info(`Received security review from ${aiResponse.provider}.`);
 
   const status = statusForFindings(findings);
   const result: CheckResult = {
@@ -38,5 +44,8 @@ export async function runSecurity(context: RunContext, options: SecurityOptions 
 
   const markdown = renderCheckResult(result);
   await writeReport(markdown, options);
+  if (options.output) {
+    context.progress?.info(`Security report written to ${options.output}.`);
+  }
   return { result, markdown };
 }

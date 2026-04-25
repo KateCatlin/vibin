@@ -84,7 +84,9 @@ To have `vibin` start your app, pass a start command:
 vibin check --start-command "npm run dev" --url http://localhost:3000
 ```
 
-`vibin` waits for the URL to respond, runs the browser checks, and then stops the process it started.
+`vibin` waits up to 20 seconds for the URL to respond, runs the browser checks, and then stops the process it started.
+
+If the app never becomes reachable, `vibin` explains what it checked in plain English. For localhost URLs, it can tell the difference between "nothing is listening on this port" and "the app answered with a server error," then suggests the next command to try, such as adding `--start-command "npm run dev"` or changing `--url` to the port your app actually uses.
 
 ## Commands
 
@@ -158,25 +160,27 @@ Global option:
 | Option | Description |
 | --- | --- |
 | `--cwd <path>` | Project directory to inspect. Defaults to the current working directory. Use it before the command, for example `vibin --cwd ../my-app security`. |
+| `--quiet` | Hide progress messages. Use it before the command, for example `vibin --quiet check`. |
+| `--no-color` | Disable ANSI colors in terminal output. `NO_COLOR` and `FORCE_COLOR` are also respected. |
 
 Command options:
 
 | Option | Commands | Description |
 | --- | --- | --- |
-| `--url <url>` | `ui`, `users`, `check` | Running app URL. Defaults to `http://localhost:3000`. |
+| `--url <url>` | `ui`, `users`, `check` | Running app URL. Defaults to `http://localhost:3000`; browser checks wait up to 20 seconds for it to respond. |
 | `--start-command <command>` | `ui`, `users`, `check` | Command used to start the app before browser checks. |
 | `--goal <goal>` | `users`, `check` | Fake-user goal to attempt. Defaults to `understand the product and complete the primary call to action`. |
 | `-o, --output <path>` | all commands | Write the markdown report to a file. |
 
 ## Output
 
-Every command prints a markdown report to stdout. Add `--output` or `-o` to also write that report to a file.
+Every command prints emoji-forward progress messages to stderr while it works, then prints a markdown report to stdout. Terminal readouts use color when supported; add `--no-color` or set `NO_COLOR` to disable ANSI colors. Add `--output` or `-o` to also write the plain markdown report to a file. Use `--quiet` to hide progress messages.
 
 Statuses are:
 
-- `PASS` — no medium-or-higher findings were found
-- `WARN` — medium or high findings were found
-- `FAIL` — at least one critical finding was found
+- `✅ PASS` — no medium-or-higher findings were found
+- `⚠️ WARN` — medium or high findings were found
+- `⛔ FAIL` — at least one critical finding was found
 
 ## Exit codes
 

@@ -7,15 +7,21 @@ import { renderCheckResult, statusForFindings, writeReport } from '../reporting/
 export interface UiOptions {
   url?: string;
   startCommand?: string;
+  commandName?: 'ui' | 'check';
   output?: string;
 }
 
 export async function runUi(context: RunContext, options: UiOptions = {}): Promise<{ result: CheckResult; markdown: string }> {
   const startedAt = new Date().toISOString();
+  context.progress?.info('Preparing app for UI review.');
   const snapshots = await withApp(
-    { cwd: context.cwd, url: options.url, startCommand: options.startCommand },
-    (url) => collectPageSnapshots(url)
+    { cwd: context.cwd, url: options.url, startCommand: options.startCommand, commandName: options.commandName ?? 'ui', progress: context.progress },
+    (url) => collectPageSnapshots(url, 4, context.progress)
   );
+  context.progress?.info(`Captured ${snapshots.length} page snapshot${snapshots.length === 1 ? '' : 's'}.`);
+  context.progress?.info('Resolving AI backend for UI critique.');
+  const ai = await resolveAiProvider(context.env, context.progress);
+  context.progress?.info(`Requesting UI critique from ${ai.name}.`);
   const findings: Finding[] = snapshots.flatMap((snapshot) => [
     ...snapshot.consoleErrors.map((error, index) => ({
       id: `console:${snapshot.url}:${index}`,
@@ -41,7 +47,6 @@ export async function runUi(context: RunContext, options: UiOptions = {}): Promi
       : [])
   ]);
 
-  const ai = await resolveAiProvider(context.env);
   const aiResponse = await ai.generateText({
     system:
       'You are vibin, an honest design critic for pre-launch web apps. Judge beauty, modernity, simplicity, and cross-page consistency. Be specific and kind but not soft.',
@@ -51,8 +56,10 @@ export async function runUi(context: RunContext, options: UiOptions = {}): Promi
       'Give concrete suggestions a fast-moving builder can act on before launch.',
       '',
       JSON.stringify({ snapshots }, null, 2)
-    ].join('\n')
+    ].join('\n'),
+    progress: context.progress
   });
+  context.progress?.info(`Received UI critique from ${aiResponse.provider}.`);
 
   const result: CheckResult = {
     name: 'ui',
@@ -77,5 +84,8 @@ export async function runUi(context: RunContext, options: UiOptions = {}): Promi
 
   const markdown = renderCheckResult(result);
   await writeReport(markdown, options);
+  if (options.output) {
+    context.progress?.info(`UI report written to ${options.output}.`);
+  }
   return { result, markdown };
 }

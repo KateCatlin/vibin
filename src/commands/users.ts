@@ -16,6 +16,7 @@ const actionSchema = z.object({
 export interface UsersOptions {
   url?: string;
   startCommand?: string;
+  commandName?: 'users' | 'check';
   goal?: string;
   output?: string;
   maxSteps?: number;
@@ -24,15 +25,19 @@ export interface UsersOptions {
 export async function runUsers(context: RunContext, options: UsersOptions = {}): Promise<{ result: CheckResult; markdown: string }> {
   const startedAt = new Date().toISOString();
   const goal = options.goal ?? 'understand the product and complete the primary call to action';
-  const ai = await resolveAiProvider(context.env);
+  context.progress?.info('Resolving AI backend for fake-user testing.');
+  const ai = await resolveAiProvider(context.env, context.progress);
   const steps: string[] = [];
   const findings: Finding[] = [];
 
-  await withApp({ cwd: context.cwd, url: options.url, startCommand: options.startCommand }, async (url) => {
-    const { browser, page, consoleErrors } = await openBrowserPage(url);
+  context.progress?.info('Preparing app for fake-user testing.');
+  await withApp({ cwd: context.cwd, url: options.url, startCommand: options.startCommand, commandName: options.commandName ?? 'users', progress: context.progress }, async (url) => {
+    const { browser, page, consoleErrors } = await openBrowserPage(url, context.progress);
     try {
       for (let index = 0; index < (options.maxSteps ?? 8); index += 1) {
+        context.progress?.info(`Capturing browser state for fake-user step ${index + 1}.`);
         const snapshot = await getCurrentPageSnapshot(page, consoleErrors);
+        context.progress?.info(`Requesting next fake-user action from ${ai.name}.`);
         const response = await ai.generateText({
           system:
             'You are vibin, a fake user testing agent. Choose one realistic browser action at a time. Return only JSON matching {action,target,value,reason,expected}.',
@@ -44,11 +49,13 @@ export async function runUsers(context: RunContext, options: UsersOptions = {}):
             '',
             JSON.stringify(snapshot, null, 2)
           ].join('\n'),
-          preferJson: true
+          preferJson: true,
+          progress: context.progress
         });
         const action = actionSchema.parse(extractJsonObject(response.text));
 
         if (action.action === 'stop') {
+          context.progress?.info(`Fake user stopped after ${index + 1} step${index === 0 ? '' : 's'}.`);
           steps.push(`Stopped: ${action.reason}`);
           if (!/complete|done|success|finished/i.test(action.reason)) {
             findings.push({
@@ -65,8 +72,10 @@ export async function runUsers(context: RunContext, options: UsersOptions = {}):
         }
 
         steps.push(`Step ${index + 1}: ${action.action} ${action.target ?? ''}${action.value ? ` = ${action.value}` : ''}. ${action.reason}`);
+        context.progress?.info(`Executing fake-user action: ${action.action}${action.target ? ` ${action.target}` : ''}.`);
         const executed = await executeAction(page, action);
         if (!executed) {
+          context.progress?.info('Fake-user action was not actionable.');
           const evidence = `I expected ${action.expected ?? 'the requested action to work'} but got no matching control for ${action.target ?? action.action}.`;
           findings.push({
             id: `user-friction:${index}`,
@@ -99,6 +108,9 @@ export async function runUsers(context: RunContext, options: UsersOptions = {}):
 
   const markdown = renderCheckResult(result);
   await writeReport(markdown, options);
+  if (options.output) {
+    context.progress?.info(`Users report written to ${options.output}.`);
+  }
   return { result, markdown };
 }
 

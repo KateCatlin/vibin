@@ -2,24 +2,29 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
-import type { PageSnapshot } from '../types.js';
+import type { PageSnapshot, ProgressReporter } from '../types.js';
 
-export async function collectPageSnapshots(url: string, maxPages = 4): Promise<PageSnapshot[]> {
+export async function collectPageSnapshots(url: string, maxPages = 4, progress?: ProgressReporter): Promise<PageSnapshot[]> {
+  progress?.info('Launching browser for UI snapshots.');
   const browser = await chromium.launch({ headless: true });
   const screenshotDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vibin-screenshots-'));
 
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    progress?.info('Discovering same-origin pages to review.');
     const discoveredUrls = await discoverUrls(page, url, maxPages);
+    progress?.info(`Discovered ${discoveredUrls.length} page${discoveredUrls.length === 1 ? '' : 's'} for desktop snapshots.`);
     const snapshots: PageSnapshot[] = [];
 
     for (const [index, discoveredUrl] of discoveredUrls.entries()) {
       const snapshotPage = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+      progress?.info(`Capturing desktop snapshot ${index + 1}/${discoveredUrls.length}: ${discoveredUrl}.`);
       snapshots.push(await snapshotPageState(snapshotPage, discoveredUrl, path.join(screenshotDir, `page-${index + 1}.png`)));
       await snapshotPage.close();
     }
 
     const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
+    progress?.info(`Capturing mobile snapshot: ${url}.`);
     snapshots.push(await snapshotPageState(mobilePage, url, path.join(screenshotDir, 'mobile-home.png')));
     await mobilePage.close();
 
@@ -29,7 +34,8 @@ export async function collectPageSnapshots(url: string, maxPages = 4): Promise<P
   }
 }
 
-export async function openBrowserPage(url: string): Promise<{ browser: Browser; page: Page; consoleErrors: string[] }> {
+export async function openBrowserPage(url: string, progress?: ProgressReporter): Promise<{ browser: Browser; page: Page; consoleErrors: string[] }> {
+  progress?.info('Launching browser for fake-user session.');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const consoleErrors: string[] = [];
@@ -38,6 +44,7 @@ export async function openBrowserPage(url: string): Promise<{ browser: Browser; 
       consoleErrors.push(message.text());
     }
   });
+  progress?.info(`Opening ${url} in the browser.`);
   await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
   return { browser, page, consoleErrors };
 }

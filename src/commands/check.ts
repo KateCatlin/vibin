@@ -13,12 +13,22 @@ export interface CheckOptions {
 
 export async function runCheck(context: RunContext, options: CheckOptions = {}): Promise<{ result: CheckResult; markdown: string; results: CheckResult[] }> {
   const startedAt = new Date().toISOString();
+  context.progress?.info('Running security check (1/3).');
   const security = await runSecurity(context);
-  const ui = await runUi(context, options);
-  const users = await runUsers(context, options);
+  context.progress?.info(`Security check completed with ${security.result.status.toUpperCase()}.`);
+  context.progress?.info('Running UI check (2/3).');
+  const ui = await runUi(context, { ...options, commandName: 'check' });
+  context.progress?.info(`UI check completed with ${ui.result.status.toUpperCase()}.`);
+  context.progress?.info('Running fake-user check (3/3).');
+  const users = await runUsers(context, { ...options, commandName: 'check' });
+  context.progress?.info(`Fake-user check completed with ${users.result.status.toUpperCase()}.`);
   const results = [security.result, ui.result, users.result];
+  context.progress?.info('Rendering combined pre-launch report.');
   const markdown = renderCombinedReport(results);
   await writeReport(markdown, options);
+  if (options.output) {
+    context.progress?.info(`Combined report written to ${options.output}.`);
+  }
 
   return {
     result: {

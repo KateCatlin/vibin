@@ -7,7 +7,9 @@ import { runCheck } from './commands/check.js';
 import { runSecurity } from './commands/security.js';
 import { runUi } from './commands/ui.js';
 import { runUsers } from './commands/users.js';
-import type { RunContext } from './types.js';
+import { createProgressReporter } from './progress.js';
+import { renderCliError, renderTerminalMarkdown } from './terminal.js';
+import type { CheckResult, RunContext } from './types.js';
 
 export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
   const program = new Command();
@@ -16,16 +18,18 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
     .name('vibin')
     .description('A pre-launch sanity checker for vibe coders who want a safety net before going live.')
     .version('0.1.0')
-    .option('--cwd <path>', 'project directory to check', process.cwd());
+    .option('--cwd <path>', 'project directory to check', process.cwd())
+    .option('--quiet', 'hide progress messages')
+    .option('--no-color', 'disable colorized terminal output');
 
   program
     .command('security')
     .description('Run an AI-powered security review of the current project.')
     .option('-o, --output <path>', 'write the markdown report to a file')
     .action(async (options) => {
-      await handleCommand(program, env, async (context) => {
+      await handleCommand(program, env, 'security', async (context, printMarkdown) => {
         const { result, markdown } = await runSecurity(context, options);
-        console.log(markdown);
+        printMarkdown(markdown);
         return result;
       });
     });
@@ -37,9 +41,9 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
     .option('--start-command <command>', 'command used to start the app before reviewing')
     .option('-o, --output <path>', 'write the markdown report to a file')
     .action(async (options) => {
-      await handleCommand(program, env, async (context) => {
+      await handleCommand(program, env, 'ui', async (context, printMarkdown) => {
         const { result, markdown } = await runUi(context, options);
-        console.log(markdown);
+        printMarkdown(markdown);
         return result;
       });
     });
@@ -52,9 +56,9 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
     .option('--goal <goal>', 'user goal to attempt', 'understand the product and complete the primary call to action')
     .option('-o, --output <path>', 'write the markdown report to a file')
     .action(async (options) => {
-      await handleCommand(program, env, async (context) => {
+      await handleCommand(program, env, 'users', async (context, printMarkdown) => {
         const { result, markdown } = await runUsers(context, options);
-        console.log(markdown);
+        printMarkdown(markdown);
         return result;
       });
     });
@@ -67,9 +71,9 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
     .option('--goal <goal>', 'fake-user goal to attempt', 'understand the product and complete the primary call to action')
     .option('-o, --output <path>', 'write the markdown report to a file')
     .action(async (options) => {
-      await handleCommand(program, env, async (context) => {
+      await handleCommand(program, env, 'check', async (context, printMarkdown) => {
         const { result, markdown } = await runCheck(context, options);
-        console.log(markdown);
+        printMarkdown(markdown);
         return result;
       });
     });
@@ -80,14 +84,22 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
 async function handleCommand(
   program: Command,
   env: NodeJS.ProcessEnv,
-  run: (context: RunContext) => Promise<{ status: string }>
+  commandName: string,
+  run: (context: RunContext, printMarkdown: (markdown: string) => void) => Promise<CheckResult>
 ): Promise<void> {
+  const terminalColor = program.opts<{ color?: boolean }>().color === false ? false : undefined;
   try {
-    const opts = program.opts<{ cwd: string }>();
-    const result = await run({ cwd: opts.cwd, env });
-    process.exitCode = exitCodeForResult(result as Parameters<typeof exitCodeForResult>[0]);
+    const opts = program.opts<{ cwd: string; quiet?: boolean; color?: boolean }>();
+    const progress = createProgressReporter({ enabled: !opts.quiet, env, color: terminalColor });
+    progress?.info(`Starting ${commandName} in ${opts.cwd}.`);
+    const printMarkdown = (markdown: string) => {
+      process.stdout.write(renderTerminalMarkdown(markdown, { env, stream: process.stdout, color: terminalColor }));
+    };
+    const result = await run({ cwd: opts.cwd, env, progress }, printMarkdown);
+    progress?.info(`${commandName} finished with ${result.status.toUpperCase()}.`);
+    process.exitCode = exitCodeForResult(result);
   } catch (error) {
-    console.error(`vibin failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(renderCliError(error instanceof Error ? error.message : String(error), { env, stream: process.stderr, color: terminalColor }));
     process.exitCode = 2;
   }
 }

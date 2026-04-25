@@ -24,15 +24,14 @@ Outputs a ranked list of issues with file references and suggested fixes. Exits 
 
 ### `vibin ui`
 
-Spins up your app, screenshots the main routes, and has a vision model review them for:
+Spins up your app, reviews the UI, and gives feedback on:
 
-- Broken layouts & weird spacing
-- Bad contrast & accessibility red flags
-- Mobile responsiveness fails
-- Leftover `Lorem ipsum` / `TODO` text
-- Broken images & console errors
+- Beauty
+- Modernity  
+- Simplicity
+- Consistency
 
-Outputs a markdown report with screenshots + annotated feedback.
+Outputs a report with feedback and suggestions for improvement.
 
 ### `vibin users`
 
@@ -46,22 +45,17 @@ Outputs a user-testing report with screenshots at every friction point.
 
 Runs all three. One command, one report. The thing you actually run before `git push`.
 
-## Install
-
-```bash
-npm install -g vibin
-```
 
 ## Usage
 
-```bash
+```
 cd your-project
 vibin check
 ```
 
 Or run individual checks:
 
-```bash
+```
 vibin security
 vibin ui --url http://localhost:3000
 vibin users --goal "sign up and create a project"
@@ -78,7 +72,7 @@ You don't have to think about which model is running. You just have to think abo
 
 ## Why
 
-Vibe coding is great. Vibe coding *and then accidentally committing your Stripe key* is not. `vibin` exists so you can keep moving fast without leaving a trail of broken signup flows, exposed secrets, and inaccessible buttons behind you.
+Vibe coding is great. Vibe coding *and then accidentally committing your secret key* is not. `vibin` exists so you can keep moving fast without leaving a trail of broken signup flows, exposed secrets, and inaccessible buttons behind you.
 
 Built with Copilot CLI, for everyone building with Copilot CLI. 💚
 

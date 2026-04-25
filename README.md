@@ -2,77 +2,39 @@
 
 > A pre-launch sanity checker for vibe coders.
 
-You ship fast. You skip the boring stuff. `vibin` is the safety net that runs the boring stuff *for* you — right before you go live.
+`vibin` is a Node.js CLI that runs the boring pre-launch checks you might skip when you are moving fast: security scanning, AI-assisted UI critique, and a fake-user browser journey.
 
-Three checks. One command. Zero excuses for shipping something broken.
+Run one check, or run the full pre-launch suite before you ship.
 
-## What it does
+## Requirements
 
-### `vibin security`
+- Node.js 20 or newer
+- An AI backend:
+  - Copilot CLI (`copilot`) or GitHub CLI with Copilot (`gh copilot`), or
+  - `OPENAI_API_KEY`, or
+  - `ANTHROPIC_API_KEY`
+- Chromium browser binaries for browser-based checks (`ui`, `users`, and `check`)
 
-Runs an AI-powered security review of the current project. It combines deterministic local scanners with an AI reviewer to catch common vibe-coding mistakes:
+## Download and install
 
-- Hardcoded API keys and secrets in source code
-- `.env` files committed to git
-- Missing-auth risk on sensitive routes
-- SQL injection risks from dynamic query construction
-- Overly permissive CORS
-- Client-side exposure of server-only secrets, such as service-role keys
-- Known-vulnerable npm dependencies
-
-It prints a ranked markdown report with file references, evidence, and suggested fixes. It exits non-zero if anything critical is found, so it can gate a deploy.
+### Use without installing
 
 ```bash
-vibin security
-vibin security --output security-report.md
+npx vibin@latest --help
 ```
 
-### `vibin ui`
-
-Spins up or connects to your app, captures representative pages with Playwright, and asks an AI reviewer for honest design-crit-style feedback on:
-
-- Beauty
-- Modernity
-- Simplicity
-- Cross-page consistency
-
-It also reports browser console errors and broken images found during the review.
+### Install globally
 
 ```bash
-vibin ui --url http://localhost:3000
-vibin ui --start-command "npm run dev" --url http://localhost:3000
+npm install -g vibin
+vibin --help
 ```
 
-### `vibin users`
-
-The "fake user" check. It launches an agentic browser session that clicks through the live site or localhost like a person would: finding controls by label, filling forms, navigating pages, and trying to complete a real goal.
-
-It narrates what it tried, where it got stuck, and what felt unintuitive, with feedback like:
-
-> *"I expected clicking Get Started to open signup, but it took me to pricing instead."*
+### Install from this repository
 
 ```bash
-vibin users --url http://localhost:3000 --goal "sign up and create a project"
-vibin users --start-command "npm run dev" --goal "complete checkout"
-```
-
-### `vibin check`
-
-Runs all three checks in sequence and produces one pre-launch report:
-
-1. Security review
-2. UI design critique
-3. Fake-user journey
-
-```bash
-vibin check --url http://localhost:3000 --goal "sign up and create a project"
-vibin check --start-command "npm run dev" --url http://localhost:3000 --output vibin-report.md
-```
-
-
-For local development from this repository:
-
-```bash
+git clone https://github.com/KateCatlin/vibin.git
+cd vibin
 npm install
 npm run build
 npm link
@@ -81,47 +43,156 @@ vibin --help
 
 ## Browser setup
 
-The `ui` and `users` checks use Playwright. Install browser binaries once in the environment where you run `vibin`:
+The `ui`, `users`, and `check` commands use Playwright. Install Chromium once in the environment where you run `vibin`:
 
 ```bash
 npx playwright install chromium
 ```
 
-If your app is already running, pass `--url`. If you want `vibin` to start it, pass `--start-command`; `vibin` waits for the URL to respond and then cleans up the started process.
+## AI backend setup
 
-## AI backend
+`vibin` resolves an AI backend in this order:
 
-`vibin` is a thin orchestrator. It hands the actual thinking to whatever AI backend you already have set up:
+1. `copilot` CLI, if available
+2. `gh copilot`, if available
+3. OpenAI, when `OPENAI_API_KEY` is set
+4. Anthropic, when `ANTHROPIC_API_KEY` is set
 
-1. **Copilot CLI** — preferred. If an official `copilot` CLI or `gh copilot` is available, `vibin` tries it first so you can reuse your existing login.
-2. **OpenAI** — set `OPENAI_API_KEY`.
-3. **Anthropic** — set `ANTHROPIC_API_KEY`.
+Optional model overrides:
 
-You do not have to choose a model. `vibin` picks provider defaults and focuses on making the checks work.
+```bash
+export OPENAI_MODEL=gpt-4.1-mini
+export ANTHROPIC_MODEL=claude-3-5-haiku-latest
+```
+
+If no AI backend is available, `vibin` exits with an operational failure.
+
+## Quick start
+
+From the project you want to check:
+
+```bash
+vibin security
+vibin ui --url http://localhost:3000
+vibin users --url http://localhost:3000 --goal "sign up and create a project"
+vibin check --url http://localhost:3000 --goal "sign up and create a project"
+```
+
+To have `vibin` start your app, pass a start command:
+
+```bash
+vibin check --start-command "npm run dev" --url http://localhost:3000
+```
+
+`vibin` waits for the URL to respond, runs the browser checks, and then stops the process it started.
+
+## Commands
+
+### `vibin security`
+
+Runs deterministic local security scanners, then asks the configured AI backend for a ranked security review.
+
+It checks for:
+
+- Hardcoded secret-like values, including common Stripe, GitHub, AWS, Slack, and SendGrid token formats
+- `.env` files tracked by git
+- Server-only secrets referenced from likely client-side files
+- Overly permissive CORS configuration
+- Possible SQL injection from dynamic query construction
+- Sensitive-looking route files that may need an auth review
+- Known vulnerable npm dependencies via `npm audit --json`
+
+Examples:
+
+```bash
+vibin security
+vibin security --output security-report.md
+vibin --cwd ../my-app security -o security-report.md
+```
+
+### `vibin ui`
+
+Opens the app with Playwright, captures page snapshots, records browser console errors and broken images, then asks AI for design feedback on beauty, modernity, simplicity, and cross-page consistency.
+
+Examples:
+
+```bash
+vibin ui --url http://localhost:3000
+vibin ui --start-command "npm run dev" --url http://localhost:3000
+vibin ui -o ui-report.md
+```
+
+### `vibin users`
+
+Launches a fake-user browser session that attempts a goal one step at a time. The AI chooses realistic actions such as clicking, filling fields, waiting, navigating, selecting options, or stopping when the flow is complete or confusing.
+
+Examples:
+
+```bash
+vibin users --url http://localhost:3000 --goal "sign up and create a project"
+vibin users --start-command "npm run dev" --goal "complete checkout"
+vibin users -o users-report.md
+```
+
+### `vibin check`
+
+Runs the full pre-launch suite in sequence:
+
+1. `security`
+2. `ui`
+3. `users`
+
+It prints one combined markdown report with an executive summary, launch blockers, and the detailed report for each check.
+
+Examples:
+
+```bash
+vibin check --url http://localhost:3000 --goal "sign up and create a project"
+vibin check --start-command "npm run dev" --url http://localhost:3000 --output vibin-report.md
+```
 
 ## Options
 
-Most commands support:
+Global option:
+
+| Option | Description |
+| --- | --- |
+| `--cwd <path>` | Project directory to inspect. Defaults to the current working directory. Use it before the command, for example `vibin --cwd ../my-app security`. |
+
+Command options:
 
 | Option | Commands | Description |
 | --- | --- | --- |
-| `--url <url>` | `ui`, `users`, `check` | App URL to review. Defaults to `http://localhost:3000`. |
+| `--url <url>` | `ui`, `users`, `check` | Running app URL. Defaults to `http://localhost:3000`. |
 | `--start-command <command>` | `ui`, `users`, `check` | Command used to start the app before browser checks. |
-| `--goal <goal>` | `users`, `check` | Goal the fake user should try to complete. |
-| `--output <path>` | all checks | Write the markdown report to a file. |
-| `--cwd <path>` | all checks | Project directory to inspect. |
+| `--goal <goal>` | `users`, `check` | Fake-user goal to attempt. Defaults to `understand the product and complete the primary call to action`. |
+| `-o, --output <path>` | all commands | Write the markdown report to a file. |
+
+## Output
+
+Every command prints a markdown report to stdout. Add `--output` or `-o` to also write that report to a file.
+
+Statuses are:
+
+- `PASS` — no medium-or-higher findings were found
+- `WARN` — medium or high findings were found
+- `FAIL` — at least one critical finding was found
 
 ## Exit codes
 
-- `0` — check completed without critical blockers.
-- `1` — one or more critical findings or launch-blocking failures were found.
-- `2` — operational failure, such as missing AI credentials, an unreachable app URL, or a browser startup problem.
+- `0` — command completed without a failing result
+- `1` — a check produced a failing result
+- `2` — operational failure, such as missing AI credentials, unreachable app URL, or browser startup problems
 
-## Why
+## Development
 
-Vibe coding is great. Vibe coding *and then accidentally committing your Stripe key* is not. `vibin` exists so you can keep moving fast without leaving a trail of broken signup flows, exposed secrets, and confusing UI behind you.
-
-Built with Copilot CLI, for everyone building with Copilot CLI. 💚
+```bash
+npm install
+npm run build
+npm test
+npm run check
+npm run smoke
+```
 
 ## License
 

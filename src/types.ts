@@ -32,12 +32,14 @@ export interface CheckResult {
 export interface RunContext {
   cwd: string;
   env: NodeJS.ProcessEnv;
+  progress?: ProgressReporter;
 }
 
 export interface AiRequest {
   system: string;
   prompt: string;
   preferJson?: boolean;
+  progress?: ProgressReporter;
 }
 
 export interface AiResponse {
@@ -58,7 +60,9 @@ export interface BrowserTargetOptions {
   cwd: string;
   url?: string;
   startCommand?: string;
+  commandName?: 'ui' | 'users' | 'check';
   timeoutMs?: number;
+  progress?: ProgressReporter;
 }
 
 export interface PageSnapshot {
@@ -69,4 +73,8 @@ export interface PageSnapshot {
   consoleErrors: string[];
   brokenImages: number;
   screenshotPath?: string;
+}
+
+export interface ProgressReporter {
+  info(message: string): void;
 }

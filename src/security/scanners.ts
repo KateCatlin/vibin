@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { execa } from 'execa';
-import type { Finding } from '../types.js';
+import { withProgressHeartbeat } from '../progress.js';
+import type { Finding, ProgressReporter } from '../types.js';
 import { collectProjectFiles, lineNumberForIndex, readTextFile } from '../utils/files.js';
 
 const secretPatterns: Array<{ category: string; regex: RegExp; title: string }> = [
@@ -21,11 +22,11 @@ const serverOnlySecretUsageRegex =
 const clientFileRegex = /(?:^|\/)(?:app|pages|src|client|components)\/.*\.(?:ts|tsx|js|jsx|vue|svelte)$/;
 const routeFileRegex = /(?:route|routes|api|server|controller|handler).*\.(?:ts|tsx|js|jsx|py|rb|go)$/i;
 
-export async function runSecurityScanners(cwd: string): Promise<Finding[]> {
+export async function runSecurityScanners(cwd: string, progress?: ProgressReporter): Promise<Finding[]> {
   const [files, trackedEnvFindings, dependencyFindings] = await Promise.all([
     collectProjectFiles(cwd),
     findTrackedEnvFiles(cwd),
-    findDependencyVulnerabilities(cwd)
+    findDependencyVulnerabilities(cwd, progress)
   ]);
 
   const findings: Finding[] = [...trackedEnvFindings, ...dependencyFindings];
@@ -173,7 +174,7 @@ async function findTrackedEnvFiles(cwd: string): Promise<Finding[]> {
     }));
 }
 
-async function findDependencyVulnerabilities(cwd: string): Promise<Finding[]> {
+async function findDependencyVulnerabilities(cwd: string, progress?: ProgressReporter): Promise<Finding[]> {
   const packageJson = path.join(cwd, 'package.json');
   try {
     await import('node:fs/promises').then((fs) => fs.access(packageJson));
@@ -181,7 +182,12 @@ async function findDependencyVulnerabilities(cwd: string): Promise<Finding[]> {
     return [];
   }
 
-  const result = await execa('npm', ['audit', '--json'], { cwd, reject: false, timeout: 45_000 });
+  progress?.info('Checking npm dependencies with npm audit.');
+  const result = await withProgressHeartbeat(
+    progress,
+    'Still waiting for npm audit results.',
+    execa('npm', ['audit', '--json'], { cwd, reject: false, timeout: 45_000 })
+  );
   if (!result.stdout.trim()) {
     return [];
   }

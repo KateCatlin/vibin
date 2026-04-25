@@ -1,6 +1,7 @@
 import { execa, execaCommand } from 'execa';
 import { z } from 'zod';
-import type { AiProvider, AiRequest, AiResponse } from '../types.js';
+import { withProgressHeartbeat } from '../progress.js';
+import type { AiProvider, AiRequest, AiResponse, ProgressReporter } from '../types.js';
 
 const openAiResponseSchema = z.object({
   output_text: z.string().optional(),
@@ -11,24 +12,31 @@ const anthropicResponseSchema = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() }))
 });
 
-export async function resolveAiProvider(env: NodeJS.ProcessEnv = process.env): Promise<AiProvider> {
+export async function resolveAiProvider(env: NodeJS.ProcessEnv = process.env, progress?: ProgressReporter): Promise<AiProvider> {
   if (env.VIBIN_MOCK_AI_RESPONSE) {
+    progress?.info('Using mock AI backend.');
     return new StaticAiProvider(env.VIBIN_MOCK_AI_RESPONSE);
   }
 
   const providers: AiProvider[] = [];
 
+  progress?.info('Checking for Copilot CLI AI backend.');
   if (await commandWorks('copilot', ['--version'])) {
     providers.push(new CopilotCliProvider('copilot'));
-  } else if (await commandWorks('gh', ['copilot', '--help'])) {
-    providers.push(new GitHubCopilotCliProvider());
+  } else {
+    progress?.info('Checking for GitHub CLI Copilot extension.');
+    if (await commandWorks('gh', ['copilot', '--help'])) {
+      providers.push(new GitHubCopilotCliProvider());
+    }
   }
 
   if (env.OPENAI_API_KEY) {
+    progress?.info('OpenAI API key found; adding OpenAI backend.');
     providers.push(new OpenAiProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL));
   }
 
   if (env.ANTHROPIC_API_KEY) {
+    progress?.info('Anthropic API key found; adding Anthropic backend.');
     providers.push(new AnthropicProvider(env.ANTHROPIC_API_KEY, env.ANTHROPIC_MODEL));
   }
 
@@ -36,7 +44,9 @@ export async function resolveAiProvider(env: NodeJS.ProcessEnv = process.env): P
     throw new Error('No AI backend found. Install the Copilot CLI, or set OPENAI_API_KEY or ANTHROPIC_API_KEY.');
   }
 
-  return providers.length === 1 ? providers[0]! : new FallbackAiProvider(providers);
+  const provider = providers.length === 1 ? providers[0]! : new FallbackAiProvider(providers);
+  progress?.info(`Selected AI backend: ${provider.name}.`);
+  return provider;
 }
 
 async function commandWorks(file: string, args: string[]): Promise<boolean> {
@@ -69,8 +79,10 @@ class FallbackAiProvider implements AiProvider {
     const errors: string[] = [];
     for (const provider of this.providers) {
       try {
+        request.progress?.info(`Trying AI backend: ${provider.name}.`);
         return await provider.generateText(request);
       } catch (error) {
+        request.progress?.info(`AI backend ${provider.name} failed; trying the next backend.`);
         errors.push(`${provider.name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
@@ -92,8 +104,13 @@ class CopilotCliProvider implements AiProvider {
       [this.executable, ['--prompt', prompt]]
     ] as const;
 
-    for (const [file, args] of attempts) {
-      const result = await execa(file, args, { reject: false, timeout: 120_000 });
+    for (const [index, [file, args]] of attempts.entries()) {
+      request.progress?.info(`Calling Copilot CLI (${index + 1}/${attempts.length}).`);
+      const result = await withProgressHeartbeat(
+        request.progress,
+        `Still waiting for Copilot CLI response (${index + 1}/${attempts.length}).`,
+        execa(file, args, { reject: false, timeout: 120_000 })
+      );
       if (result.exitCode === 0 && result.stdout.trim()) {
         return { provider: this.name, text: result.stdout.trim() };
       }
@@ -107,10 +124,15 @@ class GitHubCopilotCliProvider implements AiProvider {
   name = 'gh-copilot';
 
   async generateText(request: AiRequest): Promise<AiResponse> {
-    const result = await execa('gh', ['copilot', 'explain', formatPrompt(request)], {
-      reject: false,
-      timeout: 120_000
-    });
+    request.progress?.info('Calling GitHub CLI Copilot.');
+    const result = await withProgressHeartbeat(
+      request.progress,
+      'Still waiting for GitHub CLI Copilot response.',
+      execa('gh', ['copilot', 'explain', formatPrompt(request)], {
+        reject: false,
+        timeout: 120_000
+      })
+    );
 
     if (result.exitCode !== 0 || !result.stdout.trim()) {
       throw new Error('gh copilot did not return a response for this prompt.');
@@ -129,21 +151,26 @@ class OpenAiProvider implements AiProvider {
   ) {}
 
   async generateText(request: AiRequest): Promise<AiResponse> {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: this.model,
-        input: [
-          { role: 'system', content: request.system },
-          { role: 'user', content: request.prompt }
-        ],
-        text: request.preferJson ? { format: { type: 'json_object' } } : undefined
+    request.progress?.info(`Calling OpenAI model ${this.model}.`);
+    const response = await withProgressHeartbeat(
+      request.progress,
+      `Still waiting for OpenAI model ${this.model}.`,
+      fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: this.model,
+          input: [
+            { role: 'system', content: request.system },
+            { role: 'user', content: request.prompt }
+          ],
+          text: request.preferJson ? { format: { type: 'json_object' } } : undefined
+        })
       })
-    });
+    );
 
     if (!response.ok) {
       throw new Error(`OpenAI request failed with HTTP ${response.status}: ${await response.text()}`);
@@ -163,20 +190,25 @@ class AnthropicProvider implements AiProvider {
   ) {}
 
   async generateText(request: AiRequest): Promise<AiResponse> {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: this.model,
-        max_tokens: 4_000,
-        system: request.system,
-        messages: [{ role: 'user', content: request.prompt }]
+    request.progress?.info(`Calling Anthropic model ${this.model}.`);
+    const response = await withProgressHeartbeat(
+      request.progress,
+      `Still waiting for Anthropic model ${this.model}.`,
+      fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': this.apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: this.model,
+          max_tokens: 4_000,
+          system: request.system,
+          messages: [{ role: 'user', content: request.prompt }]
+        })
       })
-    });
+    );
 
     if (!response.ok) {
       throw new Error(`Anthropic request failed with HTTP ${response.status}: ${await response.text()}`);

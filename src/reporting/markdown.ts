@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { emojiForCheck, emojiForSectionTitle, emojiForSeverity, formatPlainStatus } from '../terminal.js';
 import type { CheckResult, CheckStatus, CommonOutputOptions, Finding, Severity } from '../types.js';
 
 const severityRank: Record<Severity, number> = {
@@ -43,9 +44,9 @@ export function combineStatus(results: CheckResult[]): CheckStatus {
 
 export function renderCheckResult(result: CheckResult): string {
   const lines = [
-    `# vibin ${result.name} report`,
+    `# ${emojiForCheck(result.name)} vibin ${result.name} report`,
     '',
-    `**Status:** ${result.status.toUpperCase()}`,
+    `**Status:** ${formatPlainStatus(result.status)}`,
     '',
     result.summary,
     ''
@@ -53,9 +54,9 @@ export function renderCheckResult(result: CheckResult): string {
 
   const findings = sortFindings(result.findings);
   if (findings.length > 0) {
-    lines.push('## Findings', '');
+    lines.push('## 🔎 Findings', '');
     findings.forEach((finding, index) => {
-      lines.push(`${index + 1}. **[${finding.severity.toUpperCase()}] ${finding.title}**`);
+      lines.push(`${index + 1}. **${emojiForSeverity(finding.severity)} [${finding.severity.toUpperCase()}] ${finding.title}**`);
       if (finding.file) {
         lines.push(`   - File: \`${finding.file}${finding.line ? `:${finding.line}` : ''}\``);
       }
@@ -68,7 +69,7 @@ export function renderCheckResult(result: CheckResult): string {
   }
 
   for (const section of result.sections) {
-    lines.push(`## ${section.title}`, '', section.body.trim(), '');
+    lines.push(`## ${emojiForSectionTitle(section.title)} ${section.title}`, '', section.body.trim(), '');
   }
 
   return lines.join('\n').trimEnd() + '\n';
@@ -81,20 +82,20 @@ export function renderCombinedReport(results: CheckResult[]): string {
   );
 
   const lines = [
-    '# vibin pre-launch report',
+    '# 🚀 vibin pre-launch report',
     '',
-    `**Overall status:** ${status.toUpperCase()}`,
+    `**Overall status:** ${formatPlainStatus(status)}`,
     '',
-    '## Executive summary',
+    '## ✨ Executive summary',
     '',
-    ...results.map((result) => `- **${result.name}:** ${result.status.toUpperCase()} — ${result.summary}`),
+    ...results.map((result) => `- ${emojiForCheck(result.name)} **${result.name}:** ${formatPlainStatus(result.status)} — ${result.summary}`),
     ''
   ];
 
   if (blockers.length > 0) {
-    lines.push('## Launch blockers and high-priority issues', '');
+    lines.push('## 🚧 Launch blockers and high-priority issues', '');
     blockers.forEach((finding, index) => {
-      lines.push(`${index + 1}. **[${finding.severity.toUpperCase()}] ${finding.title}**`);
+      lines.push(`${index + 1}. **${emojiForSeverity(finding.severity)} [${finding.severity.toUpperCase()}] ${finding.title}**`);
       if (finding.file) {
         lines.push(`   - File: \`${finding.file}${finding.line ? `:${finding.line}` : ''}\``);
       }

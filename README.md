@@ -69,11 +69,6 @@ vibin check --url http://localhost:3000 --goal "sign up and create a project"
 vibin check --start-command "npm run dev" --url http://localhost:3000 --output vibin-report.md
 ```
 
-## Install
-
-```bash
-npm install -g vibin
-```
 
 For local development from this repository:
 

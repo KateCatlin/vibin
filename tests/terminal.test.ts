@@ -42,7 +42,7 @@ describe('terminal styling', () => {
     expect(renderTerminalMarkdown(markdown, { color: false, stream: { isTTY: false }, env: {} })).toBe(markdown);
   });
 
-  it('emits OSC 8 hyperlinks in macOS Terminal.app on Ventura or later', () => {
+  it('keeps plain URLs in macOS Terminal.app so built-in URL detection can work', () => {
     const url = 'https://github.com/example/repo/pull/7';
     const markdown = `- Pull request: created → ${url}\n`;
     const output = renderTerminalMarkdown(markdown, {
@@ -50,11 +50,11 @@ describe('terminal styling', () => {
       stream: { isTTY: true },
       env: { TERM_PROGRAM: 'Apple_Terminal', TERM_PROGRAM_VERSION: '453' }
     });
-    expect(output).toContain('\u001b]8;;');
-    expect(output).toContain(url);
+    expect(output).toBe(markdown);
+    expect(output).not.toContain('\u001b]8;;');
   });
 
-  it('skips OSC 8 hyperlinks in older macOS Terminal.app versions that lack support', () => {
+  it('skips OSC 8 hyperlinks in older macOS Terminal.app versions too', () => {
     const url = 'https://github.com/example/repo/pull/7';
     const markdown = `- Pull request: created → ${url}\n`;
     const output = renderTerminalMarkdown(markdown, {

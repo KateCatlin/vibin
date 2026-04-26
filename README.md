@@ -86,10 +86,12 @@ From the project you want to check:
 
 ```bash
 vibin security
-vibin ui --url http://localhost:3000
-vibin users --url http://localhost:3000 --goal "sign up and create a project"
-vibin check --url http://localhost:3000 --goal "sign up and create a project"
+vibin ui
+vibin users --goal "sign up and create a project"
+vibin check --goal "sign up and create a project"
 ```
+
+Browser checks default to `http://localhost:3000` so the happy path stays short. When possible, `vibin` checks which local project owns that server and stops if the default localhost app is being served from a different directory.
 
 To have `vibin` start your app, pass a start command:
 
@@ -132,9 +134,10 @@ Opens the app with Playwright, captures page snapshots, records browser console 
 Examples:
 
 ```bash
+vibin ui
 vibin ui --url http://localhost:3000
 vibin ui --start-command "npm run dev" --url http://localhost:3000
-vibin ui -o ui-report.md
+vibin ui --start-command "npm run dev" -o ui-report.md
 ```
 
 ### `vibin users`
@@ -144,9 +147,10 @@ Launches a fake-user browser session that attempts a goal one step at a time. Th
 Examples:
 
 ```bash
+vibin users --goal "sign up and create a project"
 vibin users --url http://localhost:3000 --goal "sign up and create a project"
-vibin users --start-command "npm run dev" --goal "complete checkout"
-vibin users -o users-report.md
+vibin users --start-command "npm run dev" --url http://localhost:3000 --goal "complete checkout"
+vibin users --start-command "npm run dev" -o users-report.md
 ```
 
 ### `vibin check`
@@ -162,6 +166,7 @@ It prints one combined markdown report with an executive summary, launch blocker
 Examples:
 
 ```bash
+vibin check --goal "sign up and create a project"
 vibin check --url http://localhost:3000 --goal "sign up and create a project"
 vibin check --start-command "npm run dev" --url http://localhost:3000 --output vibin-report.md
 ```
@@ -180,8 +185,8 @@ Command options:
 
 | Option | Commands | Description |
 | --- | --- | --- |
-| `--url <url>` | `ui`, `users`, `check` | Running app URL. Defaults to `http://localhost:3000`; browser checks wait up to 20 seconds for it to respond. |
-| `--start-command <command>` | `ui`, `users`, `check` | Command used to start the app before browser checks. |
+| `--url <url>` | `ui`, `users`, `check` | Running app URL. Defaults to `http://localhost:3000`; pass it explicitly to review a local server even if it appears to belong to a different project. |
+| `--start-command <command>` | `ui`, `users`, `check` | Command used to start this project before browser checks. |
 | `--goal <goal>` | `users`, `check` | Fake-user goal to attempt. Defaults to `understand the product and complete the primary call to action`. |
 | `-o, --output <path>` | all commands | Write the markdown report to a file. |
 

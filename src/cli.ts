@@ -37,8 +37,8 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
   program
     .command('ui')
     .description('Review the app UI for beauty, modernity, simplicity, and consistency.')
-    .option('--url <url>', 'running app URL', 'http://localhost:3000')
-    .option('--start-command <command>', 'command used to start the app before reviewing')
+    .option('--url <url>', 'running app URL to review (default: http://localhost:3000)')
+    .option('--start-command <command>', 'command used to start this project before reviewing')
     .option('-o, --output <path>', 'write the markdown report to a file')
     .action(async (options) => {
       await handleCommand(program, env, 'ui', async (context, printMarkdown) => {
@@ -51,8 +51,8 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
   program
     .command('users')
     .description('Launch a fake-user browser session that tries to complete a real goal.')
-    .option('--url <url>', 'running app URL', 'http://localhost:3000')
-    .option('--start-command <command>', 'command used to start the app before testing')
+    .option('--url <url>', 'running app URL to test (default: http://localhost:3000)')
+    .option('--start-command <command>', 'command used to start this project before testing')
     .option('--goal <goal>', 'user goal to attempt', 'understand the product and complete the primary call to action')
     .option('-o, --output <path>', 'write the markdown report to a file')
     .action(async (options) => {
@@ -66,8 +66,8 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
   program
     .command('check')
     .description('Run security, ui, and users checks in sequence and produce one pre-launch report.')
-    .option('--url <url>', 'running app URL', 'http://localhost:3000')
-    .option('--start-command <command>', 'command used to start the app before browser checks')
+    .option('--url <url>', 'running app URL to check (default: http://localhost:3000)')
+    .option('--start-command <command>', 'command used to start this project before browser checks')
     .option('--goal <goal>', 'fake-user goal to attempt', 'understand the product and complete the primary call to action')
     .option('-o, --output <path>', 'write the markdown report to a file')
     .action(async (options) => {

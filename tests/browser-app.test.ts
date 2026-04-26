@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_APP_READY_TIMEOUT_MS, waitForUrl } from '../src/browser/app.js';
+import { DEFAULT_APP_READY_TIMEOUT_MS, waitForUrl, withApp } from '../src/browser/app.js';
 
 describe('browser app readiness', () => {
   it('uses a 20 second default readiness timeout', () => {
@@ -58,6 +58,19 @@ describe('browser app readiness', () => {
       ).rejects.toThrow(/vibin check --start-command "npm run dev" --url http:\/\/localhost:5173/);
     } finally {
       await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses implicit localhost when it belongs to a different project', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'vibin-app-test-'));
+    const otherCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'vibin-other-app-test-'));
+    try {
+      await expect(
+        withApp({ cwd, commandName: 'ui', resolveLocalServerCwd: async () => otherCwd }, async () => undefined)
+      ).rejects.toThrow(/http:\/\/localhost:3000 is already being served from .*which is outside this project/);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+      await fs.rm(otherCwd, { recursive: true, force: true });
     }
   });
 

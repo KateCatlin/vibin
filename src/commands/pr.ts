@@ -173,10 +173,20 @@ export async function runPr(
     }
   }
 
+  const prStatusLabel = prStatus === 'updated' ? 'updated existing' : prStatus === 'created' ? 'created' : 'n/a';
+  // Render the PR URL on its own continuation line so terminals that rely on
+  // built-in URL auto-detection (notably macOS Terminal.app, which doesn't
+  // support OSC 8 hyperlinks) keep it Cmd+clickable. Inline URLs preceded by
+  // other text + the unicode arrow break Terminal.app's detection.
+  const prLine = shouldPush
+    ? prUrl.startsWith('http')
+      ? `Pull request: ${prStatusLabel}\n  ${prUrl}`
+      : `Pull request: ${prStatusLabel} (${prUrl})`
+    : 'Push: skipped (--no-push).';
   const summaryLines = [
     `Branch: \`${workingBranch}\`${workingBranch !== startingBranch ? ` (created from \`${startingBranch}\`)` : ''}`,
     `Commit: \`${commitSha.slice(0, 12)}\` — ${subject}`,
-    shouldPush ? `Pull request: ${prStatus === 'updated' ? 'updated existing' : prStatus === 'created' ? 'created' : 'n/a'} → ${prUrl}` : 'Push: skipped (--no-push).',
+    prLine,
     aiProvider ? `AI backend: ${aiProvider.name}` : 'AI backend: none'
   ];
 

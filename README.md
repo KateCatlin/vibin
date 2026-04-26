@@ -20,13 +20,13 @@ Run one check, or run the full pre-launch suite before you ship.
 ### Use without installing
 
 ```bash
-npx vibin@latest --help
+npx @vibin-cli/vibin@latest --help
 ```
 
 ### Install globally
 
 ```bash
-npm install -g vibin
+npm install -g @vibin-cli/vibin
 vibin --help
 ```
 

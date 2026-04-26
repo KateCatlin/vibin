@@ -1,11 +1,14 @@
 {
-  "name": "vibin",
+  "name": "@vibin-cli/vibin",
   "version": "0.1.0",
   "description": "A pre-launch sanity checker for vibe coders.",
   "license": "MIT",
   "type": "module",
   "bin": {
     "vibin": "./dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",

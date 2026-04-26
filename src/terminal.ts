@@ -131,14 +131,42 @@ export function formatProgressLine(message: string, elapsedSeconds: string, opti
 
 export function renderTerminalMarkdown(markdown: string, options: TerminalStyleOptions = {}): string {
   const color = shouldUseColor(options);
-  if (!color) {
+  const hyperlinks = shouldUseHyperlinks(options);
+  if (!color && !hyperlinks) {
     return markdown;
   }
 
   return markdown
     .split('\n')
-    .map((line) => colorizeMarkdownLine(line, color))
+    .map((line) => {
+      const colorized = color ? colorizeMarkdownLine(line, color) : line;
+      return hyperlinks ? linkifyUrls(colorized) : colorized;
+    })
     .join('\n');
+}
+
+export function shouldUseHyperlinks(options: TerminalStyleOptions = {}): boolean {
+  const env = options.env ?? process.env;
+  if ('NO_COLOR' in env || env.TERM === 'dumb') {
+    return false;
+  }
+  if (env.FORCE_HYPERLINK === '0' || env.FORCE_HYPERLINK?.toLowerCase() === 'false') {
+    return false;
+  }
+  if (env.FORCE_HYPERLINK) {
+    return true;
+  }
+  return options.stream?.isTTY === true;
+}
+
+const URL_PATTERN = /\bhttps?:\/\/[^\s<>()\[\]'"`]+[^\s<>()\[\]'"`.,;:!?]/g;
+
+export function linkifyUrls(text: string): string {
+  return text.replace(URL_PATTERN, (url) => hyperlink(url, url));
+}
+
+export function hyperlink(url: string, label: string): string {
+  return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
 }
 
 export function renderCliError(message: string, options: TerminalStyleOptions = {}): string {

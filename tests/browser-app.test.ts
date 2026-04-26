@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { DEFAULT_APP_READY_TIMEOUT_MS, waitForUrl } from '../src/browser/app.js';
+import { DEFAULT_APP_READY_TIMEOUT_MS, waitForUrl, withApp } from '../src/browser/app.js';
 
 describe('browser app readiness', () => {
   it('uses a 20 second default readiness timeout', () => {
@@ -56,6 +56,19 @@ describe('browser app readiness', () => {
           checkConnection: async () => 'closed'
         })
       ).rejects.toThrow(/vibin check --start-command "npm run dev" --url http:\/\/localhost:5173/);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to use implicit localhost without a repo-scoped start command', async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'vibin-app-test-'));
+    try {
+      await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
+
+      await expect(withApp({ cwd, commandName: 'ui' }, async () => undefined)).rejects.toThrow(
+        /won't use http:\/\/localhost:3000 automatically.*vibin ui --start-command "npm run dev"/
+      );
     } finally {
       await fs.rm(cwd, { recursive: true, force: true });
     }

@@ -43,6 +43,7 @@ export async function withApp<T>(
   options: BrowserTargetOptions,
   callback: (url: string) => Promise<T>
 ): Promise<T> {
+  await assertBrowserTargetIsExplicit(options);
   const url = options.url ?? 'http://localhost:3000';
   let child: ReturnType<typeof execaCommand> | undefined;
   let startDiagnostics: StartCommandDiagnostics | undefined;
@@ -242,6 +243,26 @@ async function suggestedStartCommand(cwd: string): Promise<string | undefined> {
   }
 
   return undefined;
+}
+
+async function assertBrowserTargetIsExplicit(options: BrowserTargetOptions): Promise<void> {
+  if (options.url || options.startCommand) {
+    return;
+  }
+
+  const commandName = options.commandName ?? 'ui';
+  const suggestedCommand = await suggestedStartCommand(options.cwd);
+  const startSuggestion = suggestedCommand
+    ? `Run vibin ${commandName} --start-command ${quoteCommand(suggestedCommand)}.`
+    : `Run vibin ${commandName} --start-command ${quoteCommand('<your dev command>')}.`;
+
+  throw new Error(
+    [
+      "I won't use http://localhost:3000 automatically because another project's dev server may already be running there.",
+      startSuggestion,
+      'If you intentionally want to review an already-running app, pass its address explicitly with --url.'
+    ].join(' ')
+  );
 }
 
 function captureStartCommandDiagnostics(child: ReturnType<typeof execaCommand>, command: string): StartCommandDiagnostics {

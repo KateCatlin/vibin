@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { createConnection } from 'node:net';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { execaCommand } from 'execa';
+import { execa, execaCommand } from 'execa';
 import type { BrowserTargetOptions, ProgressReporter } from '../types.js';
 
 export const DEFAULT_APP_READY_TIMEOUT_MS = 20_000;
@@ -43,8 +43,8 @@ export async function withApp<T>(
   options: BrowserTargetOptions,
   callback: (url: string) => Promise<T>
 ): Promise<T> {
-  await assertBrowserTargetIsExplicit(options);
   const url = options.url ?? 'http://localhost:3000';
+  await assertImplicitLocalhostTargetBelongsToProject(options, url);
   let child: ReturnType<typeof execaCommand> | undefined;
   let startDiagnostics: StartCommandDiagnostics | undefined;
 
@@ -245,24 +245,88 @@ async function suggestedStartCommand(cwd: string): Promise<string | undefined> {
   return undefined;
 }
 
-async function assertBrowserTargetIsExplicit(options: BrowserTargetOptions): Promise<void> {
+async function assertImplicitLocalhostTargetBelongsToProject(options: BrowserTargetOptions, url: string): Promise<void> {
   if (options.url || options.startCommand) {
     return;
   }
 
-  const commandName = options.commandName ?? 'ui';
-  const suggestedCommand = await suggestedStartCommand(options.cwd);
-  const startSuggestion = suggestedCommand
-    ? `Run vibin ${commandName} --start-command ${quoteCommand(suggestedCommand)}.`
-    : `Run vibin ${commandName} --start-command ${quoteCommand('<your dev command>')}.`;
+  const parsedUrl = parseUrl(url);
+  if (!parsedUrl || !isLocalhostUrl(parsedUrl)) {
+    return;
+  }
+
+  const serverCwd = await (options.resolveLocalServerCwd ?? resolveLocalServerCwd)(parsedUrl).catch(() => undefined);
+  if (!serverCwd) {
+    return;
+  }
+
+  const projectCwd = await realPathOrResolve(options.cwd);
+  const realServerCwd = await realPathOrResolve(serverCwd);
+  if (isSameOrChildPath(realServerCwd, projectCwd)) {
+    return;
+  }
 
   throw new Error(
     [
-      "I won't use http://localhost:3000 automatically because another project's dev server may already be running there.",
-      startSuggestion,
-      'If you intentionally want to review an already-running app, pass its address explicitly with --url.'
+      `${url} is already being served from ${realServerCwd}, which is outside this project (${projectCwd}).`,
+      'Stop that server, run vibin from that project, or pass --url explicitly if you meant to review it.'
     ].join(' ')
   );
+}
+
+async function resolveLocalServerCwd(url: URL): Promise<string | undefined> {
+  const port = portForUrl(url);
+  if (!port) {
+    return undefined;
+  }
+
+  const pid = await findListeningPid(port);
+  return pid ? cwdForPid(pid) : undefined;
+}
+
+async function findListeningPid(port: number): Promise<string | undefined> {
+  const result = await execa('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fp'], {
+    reject: false,
+    timeout: 1_000
+  });
+  if (result.exitCode !== 0) {
+    return undefined;
+  }
+
+  return result.stdout
+    .split('\n')
+    .map((line) => line.match(/^p(\d+)$/)?.[1])
+    .find((pid): pid is string => Boolean(pid));
+}
+
+async function cwdForPid(pid: string): Promise<string | undefined> {
+  const procCwd = `/proc/${pid}/cwd`;
+  const linuxCwd = await fs.readlink(procCwd).catch(() => undefined);
+  if (linuxCwd) {
+    return linuxCwd;
+  }
+
+  const result = await execa('lsof', ['-a', '-p', pid, '-d', 'cwd', '-Fn'], {
+    reject: false,
+    timeout: 1_000
+  });
+  if (result.exitCode !== 0) {
+    return undefined;
+  }
+
+  return result.stdout
+    .split('\n')
+    .map((line) => line.match(/^n(.+)$/)?.[1])
+    .find((cwd): cwd is string => Boolean(cwd));
+}
+
+async function realPathOrResolve(filePath: string): Promise<string> {
+  return fs.realpath(filePath).catch(() => path.resolve(filePath));
+}
+
+function isSameOrChildPath(childPath: string, parentPath: string): boolean {
+  const relative = path.relative(parentPath, childPath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function captureStartCommandDiagnostics(child: ReturnType<typeof execaCommand>, command: string): StartCommandDiagnostics {

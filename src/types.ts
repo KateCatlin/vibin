@@ -63,6 +63,7 @@ export interface BrowserTargetOptions {
   commandName?: 'ui' | 'users' | 'check';
   timeoutMs?: number;
   progress?: ProgressReporter;
+  resolveLocalServerCwd?: (url: URL) => Promise<string | undefined>;
 }
 
 export interface PageSnapshot {

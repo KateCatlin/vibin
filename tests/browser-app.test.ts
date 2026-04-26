@@ -61,16 +61,16 @@ describe('browser app readiness', () => {
     }
   });
 
-  it('refuses to use implicit localhost without a repo-scoped start command', async () => {
+  it('refuses implicit localhost when it belongs to a different project', async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'vibin-app-test-'));
+    const otherCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'vibin-other-app-test-'));
     try {
-      await fs.writeFile(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
-
-      await expect(withApp({ cwd, commandName: 'ui' }, async () => undefined)).rejects.toThrow(
-        /won't use http:\/\/localhost:3000 automatically.*vibin ui --start-command "npm run dev"/
-      );
+      await expect(
+        withApp({ cwd, commandName: 'ui', resolveLocalServerCwd: async () => otherCwd }, async () => undefined)
+      ).rejects.toThrow(/http:\/\/localhost:3000 is already being served from .*which is outside this project/);
     } finally {
       await fs.rm(cwd, { recursive: true, force: true });
+      await fs.rm(otherCwd, { recursive: true, force: true });
     }
   });
 

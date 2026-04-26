@@ -86,17 +86,17 @@ From the project you want to check:
 
 ```bash
 vibin security
-vibin ui --start-command "npm run dev" --url http://localhost:3000
-vibin users --start-command "npm run dev" --url http://localhost:3000 --goal "sign up and create a project"
-vibin check --start-command "npm run dev" --url http://localhost:3000 --goal "sign up and create a project"
+vibin ui
+vibin users --goal "sign up and create a project"
+vibin check --goal "sign up and create a project"
 ```
 
-Browser checks require either a repo-scoped start command or an explicit URL. To avoid reviewing an unrelated app that happens to be running on localhost, `vibin` does not silently assume `http://localhost:3000` unless you also provide `--start-command`.
+Browser checks default to `http://localhost:3000` so the happy path stays short. When possible, `vibin` checks which local project owns that server and stops if the default localhost app is being served from a different directory.
 
-If you already started the correct app yourself, pass the URL explicitly:
+To have `vibin` start your app, pass a start command:
 
 ```bash
-vibin check --url http://localhost:3000
+vibin check --start-command "npm run dev" --url http://localhost:3000
 ```
 
 `vibin` waits up to 20 seconds for the URL to respond, runs the browser checks, and then stops the process it started.
@@ -134,8 +134,9 @@ Opens the app with Playwright, captures page snapshots, records browser console 
 Examples:
 
 ```bash
-vibin ui --start-command "npm run dev" --url http://localhost:3000
+vibin ui
 vibin ui --url http://localhost:3000
+vibin ui --start-command "npm run dev" --url http://localhost:3000
 vibin ui --start-command "npm run dev" -o ui-report.md
 ```
 
@@ -146,6 +147,7 @@ Launches a fake-user browser session that attempts a goal one step at a time. Th
 Examples:
 
 ```bash
+vibin users --goal "sign up and create a project"
 vibin users --url http://localhost:3000 --goal "sign up and create a project"
 vibin users --start-command "npm run dev" --url http://localhost:3000 --goal "complete checkout"
 vibin users --start-command "npm run dev" -o users-report.md
@@ -164,6 +166,7 @@ It prints one combined markdown report with an executive summary, launch blocker
 Examples:
 
 ```bash
+vibin check --goal "sign up and create a project"
 vibin check --url http://localhost:3000 --goal "sign up and create a project"
 vibin check --start-command "npm run dev" --url http://localhost:3000 --output vibin-report.md
 ```
@@ -182,7 +185,7 @@ Command options:
 
 | Option | Commands | Description |
 | --- | --- | --- |
-| `--url <url>` | `ui`, `users`, `check` | Explicit running app URL. If omitted with `--start-command`, browser checks use `http://localhost:3000`; if omitted without `--start-command`, they fail safe instead of using implicit localhost. |
+| `--url <url>` | `ui`, `users`, `check` | Running app URL. Defaults to `http://localhost:3000`; pass it explicitly to review a local server even if it appears to belong to a different project. |
 | `--start-command <command>` | `ui`, `users`, `check` | Command used to start this project before browser checks. |
 | `--goal <goal>` | `users`, `check` | Fake-user goal to attempt. Defaults to `understand the product and complete the primary call to action`. |
 | `-o, --output <path>` | all commands | Write the markdown report to a file. |

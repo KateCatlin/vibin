@@ -1,7 +1,12 @@
-import { execa, execaCommand } from 'execa';
 import { z } from 'zod';
+import { commandWorks, defaultCommandRunner, type CommandRunner } from './commands.js';
+import { defaultCredentialsPath, loadLocalCredentials, type LocalAiCredentials } from './credentials.js';
+import { isInteractiveTerminal, runAiOnboarding, type AiOnboardingResult, type PromptInput, type PromptOutput } from './onboarding.js';
 import { withProgressHeartbeat } from '../progress.js';
 import type { AiProvider, AiRequest, AiResponse, ProgressReporter } from '../types.js';
+
+export const DEFAULT_OPENAI_MODEL = 'gpt-5.5';
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-4-7';
 
 const openAiResponseSchema = z.object({
   output_text: z.string().optional(),
@@ -12,36 +17,89 @@ const anthropicResponseSchema = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() }))
 });
 
-export async function resolveAiProvider(env: NodeJS.ProcessEnv = process.env, progress?: ProgressReporter): Promise<AiProvider> {
+export interface ResolveAiProviderOptions {
+  commandRunner?: CommandRunner;
+  credentialsPath?: string;
+  fetchImpl?: typeof fetch;
+  input?: PromptInput;
+  isInteractive?: boolean;
+  loadCredentials?: () => Promise<LocalAiCredentials>;
+  onboarding?: (context: {
+    commandRunner: CommandRunner;
+    credentialsPath?: string;
+    input?: PromptInput;
+    output?: PromptOutput;
+    progress?: ProgressReporter;
+  }) => Promise<AiOnboardingResult>;
+  output?: PromptOutput;
+}
+
+export async function resolveAiProvider(env: NodeJS.ProcessEnv = process.env, progress?: ProgressReporter, options: ResolveAiProviderOptions = {}): Promise<AiProvider> {
   if (env.VIBIN_MOCK_AI_RESPONSE) {
     progress?.info('Using mock AI backend.');
     return new StaticAiProvider(env.VIBIN_MOCK_AI_RESPONSE);
   }
 
   const providers: AiProvider[] = [];
+  const commandRunner = options.commandRunner ?? defaultCommandRunner;
+  const credentialsPath = options.credentialsPath ?? defaultCredentialsPath(env);
+  const fetchImpl = options.fetchImpl ?? fetch;
 
   progress?.info('Checking for Copilot CLI AI backend.');
-  if (await commandWorks('copilot', ['--version'])) {
-    providers.push(new CopilotCliProvider('copilot'));
+  if (await commandWorks('copilot', ['--version'], commandRunner)) {
+    providers.push(new CopilotCliProvider('copilot', commandRunner));
   } else {
     progress?.info('Checking for GitHub CLI Copilot extension.');
-    if (await commandWorks('gh', ['copilot', '--help'])) {
-      providers.push(new GitHubCopilotCliProvider());
+    if (await commandWorks('gh', ['copilot', '--help'], commandRunner)) {
+      providers.push(new GitHubCopilotCliProvider(commandRunner));
     }
   }
 
   if (env.OPENAI_API_KEY) {
     progress?.info('OpenAI API key found; adding OpenAI backend.');
-    providers.push(new OpenAiProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL));
+    providers.push(new OpenAiProvider(env.OPENAI_API_KEY, env.OPENAI_MODEL, fetchImpl));
   }
 
   if (env.ANTHROPIC_API_KEY) {
     progress?.info('Anthropic API key found; adding Anthropic backend.');
-    providers.push(new AnthropicProvider(env.ANTHROPIC_API_KEY, env.ANTHROPIC_MODEL));
+    providers.push(new AnthropicProvider(env.ANTHROPIC_API_KEY, env.ANTHROPIC_MODEL, fetchImpl));
   }
 
   if (providers.length === 0) {
-    throw new Error('No AI backend found. Install the Copilot CLI, or set OPENAI_API_KEY or ANTHROPIC_API_KEY.');
+    const localCredentials = await (options.loadCredentials ?? (() => loadLocalCredentials(credentialsPath)))();
+    if (localCredentials.openaiApiKey) {
+      progress?.info('Local OpenAI API key found; adding OpenAI backend.');
+      providers.push(new OpenAiProvider(localCredentials.openaiApiKey, env.OPENAI_MODEL, fetchImpl));
+    }
+
+    if (localCredentials.anthropicApiKey) {
+      progress?.info('Local Anthropic API key found; adding Anthropic backend.');
+      providers.push(new AnthropicProvider(localCredentials.anthropicApiKey, env.ANTHROPIC_MODEL, fetchImpl));
+    }
+  }
+
+  if (providers.length === 0) {
+    const input = options.input ?? process.stdin;
+    const output = options.output ?? process.stderr;
+    const interactive = options.isInteractive ?? isInteractiveTerminal(input, output);
+    if (!interactive) {
+      throw new Error(missingAiBackendMessage());
+    }
+
+    const onboarding = options.onboarding ?? runAiOnboarding;
+    const result = await onboarding({
+      commandRunner,
+      credentialsPath,
+      input,
+      output,
+      progress
+    });
+    const provider = providerFromOnboardingResult(result, env, commandRunner, fetchImpl);
+    if (!provider) {
+      throw new Error(missingAiBackendMessage());
+    }
+    progress?.info(`Selected AI backend: ${provider.name}.`);
+    return provider;
   }
 
   const provider = providers.length === 1 ? providers[0]! : new FallbackAiProvider(providers);
@@ -49,13 +107,28 @@ export async function resolveAiProvider(env: NodeJS.ProcessEnv = process.env, pr
   return provider;
 }
 
-async function commandWorks(file: string, args: string[]): Promise<boolean> {
-  try {
-    const result = await execa(file, args, { reject: false, timeout: 5_000 });
-    return result.exitCode === 0;
-  } catch {
-    return false;
+function providerFromOnboardingResult(result: AiOnboardingResult, env: NodeJS.ProcessEnv, commandRunner: CommandRunner, fetchImpl: typeof fetch): AiProvider | undefined {
+  switch (result.type) {
+    case 'copilot-cli':
+      return new CopilotCliProvider('copilot', commandRunner);
+    case 'gh-copilot':
+      return new GitHubCopilotCliProvider(commandRunner);
+    case 'openai':
+      return new OpenAiProvider(result.apiKey, env.OPENAI_MODEL, fetchImpl);
+    case 'anthropic':
+      return new AnthropicProvider(result.apiKey, env.ANTHROPIC_MODEL, fetchImpl);
+    case 'cancel':
+      return undefined;
   }
+}
+
+function missingAiBackendMessage(): string {
+  return [
+    'No AI backend found.',
+    'Recommended: set up GitHub Copilot CLI, then run vibin again.',
+    'Install GitHub CLI from https://cli.github.com/, authenticate with `gh auth login`, then run `gh extension install github/gh-copilot` and verify with `gh copilot --help`.',
+    'Alternative: set OPENAI_API_KEY or ANTHROPIC_API_KEY, or run vibin in an interactive terminal to save an API key locally outside your project.'
+  ].join(' ');
 }
 
 class StaticAiProvider implements AiProvider {
@@ -94,7 +167,10 @@ class FallbackAiProvider implements AiProvider {
 class CopilotCliProvider implements AiProvider {
   name = 'copilot-cli';
 
-  constructor(private readonly executable: string) {}
+  constructor(
+    private readonly executable: string,
+    private readonly commandRunner: CommandRunner = defaultCommandRunner
+  ) {}
 
   async generateText(request: AiRequest): Promise<AiResponse> {
     const prompt = formatPrompt(request);
@@ -109,7 +185,7 @@ class CopilotCliProvider implements AiProvider {
       const result = await withProgressHeartbeat(
         request.progress,
         `Still waiting for Copilot CLI response (${index + 1}/${attempts.length}).`,
-        execa(file, args, { reject: false, timeout: 120_000 })
+        this.commandRunner(file, args, { timeout: 120_000 })
       );
       if (result.exitCode === 0 && result.stdout.trim()) {
         return { provider: this.name, text: result.stdout.trim() };
@@ -123,15 +199,14 @@ class CopilotCliProvider implements AiProvider {
 class GitHubCopilotCliProvider implements AiProvider {
   name = 'gh-copilot';
 
+  constructor(private readonly commandRunner: CommandRunner = defaultCommandRunner) {}
+
   async generateText(request: AiRequest): Promise<AiResponse> {
     request.progress?.info('Calling GitHub CLI Copilot.');
     const result = await withProgressHeartbeat(
       request.progress,
       'Still waiting for GitHub CLI Copilot response.',
-      execa('gh', ['copilot', 'explain', formatPrompt(request)], {
-        reject: false,
-        timeout: 120_000
-      })
+      this.commandRunner('gh', ['copilot', 'explain', formatPrompt(request)], { timeout: 120_000 })
     );
 
     if (result.exitCode !== 0 || !result.stdout.trim()) {
@@ -147,7 +222,8 @@ class OpenAiProvider implements AiProvider {
 
   constructor(
     private readonly apiKey: string,
-    private readonly model = 'gpt-4.1-mini'
+    private readonly model = DEFAULT_OPENAI_MODEL,
+    private readonly fetchImpl: typeof fetch = fetch
   ) {}
 
   async generateText(request: AiRequest): Promise<AiResponse> {
@@ -155,7 +231,7 @@ class OpenAiProvider implements AiProvider {
     const response = await withProgressHeartbeat(
       request.progress,
       `Still waiting for OpenAI model ${this.model}.`,
-      fetch('https://api.openai.com/v1/responses', {
+      this.fetchImpl('https://api.openai.com/v1/responses', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
@@ -186,7 +262,8 @@ class AnthropicProvider implements AiProvider {
 
   constructor(
     private readonly apiKey: string,
-    private readonly model = 'claude-3-5-haiku-latest'
+    private readonly model = DEFAULT_ANTHROPIC_MODEL,
+    private readonly fetchImpl: typeof fetch = fetch
   ) {}
 
   async generateText(request: AiRequest): Promise<AiResponse> {
@@ -194,7 +271,7 @@ class AnthropicProvider implements AiProvider {
     const response = await withProgressHeartbeat(
       request.progress,
       `Still waiting for Anthropic model ${this.model}.`,
-      fetch('https://api.anthropic.com/v1/messages', {
+      this.fetchImpl('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'x-api-key': this.apiKey,

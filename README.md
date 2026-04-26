@@ -57,13 +57,26 @@ npx playwright install chromium
 2. `gh copilot`, if available
 3. OpenAI, when `OPENAI_API_KEY` is set
 4. Anthropic, when `ANTHROPIC_API_KEY` is set
+5. OpenAI or Anthropic credentials saved by `vibin` in your user-local config
+
+If no AI backend is configured and you run `vibin` in an interactive terminal, `vibin` starts a setup wizard. The first recommendation is GitHub Copilot CLI, because that lets `vibin` use your Copilot access without storing provider API keys. The wizard walks you through installing GitHub CLI if needed, running `gh auth login`, installing the Copilot extension with `gh extension install github/gh-copilot`, and verifying `gh copilot --help`.
+
+You can dismiss Copilot setup and use an OpenAI or Anthropic API key instead. API keys entered through the wizard are written only to a user-local config file outside the project you are checking:
+
+- macOS: `~/Library/Application Support/vibin/credentials.json`
+- Windows: `%APPDATA%\vibin\credentials.json`
+- Linux/Unix: `$XDG_CONFIG_HOME/vibin/credentials.json` or `~/.config/vibin/credentials.json`
+
+The credentials directory is created with user-only permissions where supported, and the credentials file is written with `0600` permissions. Do not put provider API keys in source code, README files, shell history, committed `.env` files, or generated reports.
 
 Optional model overrides:
 
 ```bash
-export OPENAI_MODEL=gpt-4.1-mini
-export ANTHROPIC_MODEL=claude-3-5-haiku-latest
+export OPENAI_MODEL=gpt-5.5
+export ANTHROPIC_MODEL=claude-opus-4-7
 ```
+
+When using OpenAI API keys, `vibin` defaults to `gpt-5.5`. When using Anthropic API keys, `vibin` defaults to `claude-opus-4-7`. When using Copilot CLI or `gh copilot`, `vibin` does not set a model; it uses whatever default your installed Copilot tooling uses.
 
 If no AI backend is available, `vibin` exits with an operational failure.
 

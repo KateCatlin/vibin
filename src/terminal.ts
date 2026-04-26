@@ -131,14 +131,82 @@ export function formatProgressLine(message: string, elapsedSeconds: string, opti
 
 export function renderTerminalMarkdown(markdown: string, options: TerminalStyleOptions = {}): string {
   const color = shouldUseColor(options);
-  if (!color) {
+  const hyperlinks = shouldUseHyperlinks(options);
+  if (!color && !hyperlinks) {
     return markdown;
   }
 
   return markdown
     .split('\n')
-    .map((line) => colorizeMarkdownLine(line, color))
+    .map((line) => {
+      const colorized = color ? colorizeMarkdownLine(line, color) : line;
+      return hyperlinks ? linkifyUrls(colorized) : colorized;
+    })
     .join('\n');
+}
+
+export function shouldUseHyperlinks(options: TerminalStyleOptions = {}): boolean {
+  const env = options.env ?? process.env;
+  if ('NO_COLOR' in env || env.TERM === 'dumb') {
+    return false;
+  }
+  if (env.FORCE_HYPERLINK === '0' || env.FORCE_HYPERLINK?.toLowerCase() === 'false') {
+    return false;
+  }
+  if (env.FORCE_HYPERLINK) {
+    return true;
+  }
+  if (options.stream?.isTTY !== true) {
+    return false;
+  }
+  return terminalSupportsHyperlinks(env);
+}
+
+function terminalSupportsHyperlinks(env: NodeJS.ProcessEnv): boolean {
+  // Only opt in for terminals known to render OSC 8 hyperlinks correctly.
+  const termProgram = env.TERM_PROGRAM;
+  // macOS Terminal.app does not render OSC 8 hyperlinks. Leaving the plain URL
+  // intact lets Terminal.app's built-in URL detector make it clickable instead.
+  if (termProgram === 'Apple_Terminal') {
+    return false;
+  }
+  if (
+    termProgram === 'iTerm.app' ||
+    termProgram === 'vscode' ||
+    termProgram === 'WezTerm' ||
+    termProgram === 'Hyper' ||
+    termProgram === 'ghostty' ||
+    termProgram === 'tabby' ||
+    termProgram === 'rio'
+  ) {
+    return true;
+  }
+  if (env.TERM === 'xterm-kitty' || env.TERM === 'alacritty' || env.TERM === 'wezterm') {
+    return true;
+  }
+  if (env.WT_SESSION) {
+    return true; // Windows Terminal
+  }
+  if (env.DOMTERM) {
+    return true;
+  }
+  if (env.VTE_VERSION) {
+    const vte = Number.parseInt(env.VTE_VERSION, 10);
+    if (Number.isFinite(vte) && vte >= 5000) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const URL_PATTERN = /\bhttps?:\/\/[^\s<>()\[\]'"`]+[^\s<>()\[\]'"`.,;:!?]/g;
+
+export function linkifyUrls(text: string): string {
+  return text.replace(URL_PATTERN, (url) => hyperlink(url, url));
+}
+
+export function hyperlink(url: string, label: string): string {
+  return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
 }
 
 export function renderCliError(message: string, options: TerminalStyleOptions = {}): string {

@@ -42,13 +42,25 @@ describe('terminal styling', () => {
     expect(renderTerminalMarkdown(markdown, { color: false, stream: { isTTY: false }, env: {} })).toBe(markdown);
   });
 
-  it('skips OSC 8 hyperlinks in macOS Terminal.app so URL auto-detection still works', () => {
+  it('emits OSC 8 hyperlinks in macOS Terminal.app on Ventura or later', () => {
     const url = 'https://github.com/example/repo/pull/7';
     const markdown = `- Pull request: created → ${url}\n`;
     const output = renderTerminalMarkdown(markdown, {
       color: false,
       stream: { isTTY: true },
-      env: { TERM_PROGRAM: 'Apple_Terminal' }
+      env: { TERM_PROGRAM: 'Apple_Terminal', TERM_PROGRAM_VERSION: '453' }
+    });
+    expect(output).toContain('\u001b]8;;');
+    expect(output).toContain(url);
+  });
+
+  it('skips OSC 8 hyperlinks in older macOS Terminal.app versions that lack support', () => {
+    const url = 'https://github.com/example/repo/pull/7';
+    const markdown = `- Pull request: created → ${url}\n`;
+    const output = renderTerminalMarkdown(markdown, {
+      color: false,
+      stream: { isTTY: true },
+      env: { TERM_PROGRAM: 'Apple_Terminal', TERM_PROGRAM_VERSION: '433' }
     });
     expect(output).toBe(markdown);
     expect(output).not.toContain('\u001b]8;;');

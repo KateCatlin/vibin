@@ -163,12 +163,14 @@ export function shouldUseHyperlinks(options: TerminalStyleOptions = {}): boolean
 }
 
 function terminalSupportsHyperlinks(env: NodeJS.ProcessEnv): boolean {
-  // macOS Terminal.app does NOT support OSC 8 hyperlinks, and emitting them
-  // breaks its own URL auto-detection (which makes plain URLs Cmd+clickable).
   // Only opt in for terminals known to render OSC 8 hyperlinks correctly.
   const termProgram = env.TERM_PROGRAM;
   if (termProgram === 'Apple_Terminal') {
-    return false;
+    // macOS Terminal.app supports OSC 8 hyperlinks starting with macOS Ventura
+    // (Terminal.app version 440+, shipped with macOS 13). Earlier versions
+    // ignore the escapes and break URL auto-detection, so gate on version.
+    const version = Number.parseInt(env.TERM_PROGRAM_VERSION ?? '', 10);
+    return Number.isFinite(version) && version >= 440;
   }
   if (
     termProgram === 'iTerm.app' ||

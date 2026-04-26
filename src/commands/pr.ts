@@ -14,6 +14,7 @@ import {
   isGitRepo,
   lastCommitSubject,
   logSummary,
+  openPrInBrowser,
   prForBranch,
   push,
   stageAll,
@@ -30,6 +31,7 @@ export interface PrOptions {
   push?: boolean;
   ai?: boolean;
   dryRun?: boolean;
+  open?: boolean;
 }
 
 export interface PrCommandDeps {
@@ -46,8 +48,12 @@ export async function runPr(
   const shouldPush = options.push !== false;
   const allowAi = options.ai !== false;
   const dryRun = options.dryRun === true;
+  const shouldOpen = options.open === true;
   const runner = deps.shellRunner ?? defaultShellRunner;
   const resolve = deps.resolveAi ?? resolveAiProvider;
+  if (shouldOpen && !shouldPush) {
+    throw new Error('--open cannot be used with --no-push because no PR is created or updated.');
+  }
 
   if (!(await isGitRepo(context.cwd, runner))) {
     throw new Error(`Not a git repository: ${context.cwd}`);
@@ -141,6 +147,7 @@ export async function runPr(
 
   let prUrl = '(not pushed)';
   let prStatus: 'created' | 'updated' | 'skipped' = 'skipped';
+  let browserLine: string | undefined;
   if (shouldPush) {
     context.progress?.info(`Pushing branch ${workingBranch} to origin.`);
     if (!dryRun) {
@@ -171,6 +178,16 @@ export async function runPr(
         prStatus = 'created';
       }
     }
+
+    if (shouldOpen) {
+      if (dryRun) {
+        browserLine = 'Browser: would open PR after creation (--dry-run).';
+      } else {
+        context.progress?.info('Opening PR in browser.');
+        await openPrInBrowser(context.cwd, workingBranch, runner);
+        browserLine = 'Browser: opened PR in browser.';
+      }
+    }
   }
 
   const prStatusLabel = prStatus === 'updated' ? 'updated existing' : prStatus === 'created' ? 'created' : 'n/a';
@@ -181,8 +198,9 @@ export async function runPr(
     `Branch: \`${workingBranch}\`${workingBranch !== startingBranch ? ` (created from \`${startingBranch}\`)` : ''}`,
     `Commit: \`${commitSha.slice(0, 12)}\` — ${subject}`,
     prLine,
+    browserLine,
     aiProvider ? `AI backend: ${aiProvider.name}` : 'AI backend: none'
-  ];
+  ].filter((line): line is string => Boolean(line));
 
   const result: CheckResult = {
     name: 'check',

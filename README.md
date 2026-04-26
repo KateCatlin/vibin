@@ -182,7 +182,7 @@ What it does, in order:
 3. `git add -A`.
 4. Commits with `--message` if you passed one, otherwise asks the configured AI backend for a conventional-commit-style message generated from the staged diff. The standard `Co-authored-by: Copilot` trailer is appended.
 5. `git push -u origin <branch>` (skip with `--no-push`).
-6. If a PR already exists for the branch and is `OPEN`, prints its URL (your push already updated it). Otherwise calls `gh pr create` with an AI-generated title and body (with a `git log` fallback if no AI is available).
+6. If a PR already exists for the branch and is `OPEN`, prints its URL (your push already updated it). Otherwise calls `gh pr create` with an AI-generated title and body (with a `git log` fallback if no AI is available). Pass `--open` to open the created or updated PR in your browser with `gh pr view --web`.
 
 This works without Copilot CLI: it uses the same `resolveAiProvider` as the other commands, so any of the following is enough to drive AI generation: `copilot` CLI, `gh copilot` extension, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or a saved local credential from prior onboarding. With `--no-ai` (or `--message` plus `--branch` on main), no AI backend is required at all.
 
@@ -197,6 +197,7 @@ Options:
 | `--no-push` | Commit only — do not push or open a PR. |
 | `--no-ai` | Do not call any AI backend. Requires `--message`. |
 | `--dry-run` | Print what would happen; perform no `git`/`gh` writes. |
+| `--open` | Open the created or updated PR in your browser. |
 | `-o, --output <path>` | Write the markdown summary to a file. |
 
 Examples:
@@ -213,6 +214,9 @@ vibin pr --branch feat/new-thing -m "feat: new thing" --no-ai
 
 # Commit locally without pushing.
 vibin pr --no-push -m "wip: spike"
+
+# Create or update the PR, then open it in your browser.
+vibin pr --open
 
 # See what would happen without touching anything.
 vibin pr --dry-run

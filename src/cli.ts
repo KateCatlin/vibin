@@ -72,6 +72,7 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
     .option('--no-push', 'skip pushing the branch and creating a PR')
     .option('--no-ai', 'do not call any AI backend; requires --message')
     .option('--dry-run', 'log the steps that would run without executing git or gh writes')
+    .option('--open', 'open the created or updated PR in your browser')
     .option('-o, --output <path>', 'write the markdown summary to a file')
     .action(async (options) => {
       await handleCommand(program, env, 'pr', async (context, printMarkdown) => {

@@ -158,6 +158,30 @@ describe('runPr', () => {
     expect(result.sections[0]?.body).toContain('https://github.com/o/r/pull/9');
   });
 
+  it('--open opens the created PR in the browser through gh', async () => {
+    const { runner, calls } = makeRunner(baseScript([
+      { match: (f, a) => f === 'git' && a[0] === 'checkout' && a[1] === '-b', result: ok('') },
+      { match: (f, a) => f === 'git' && a[0] === 'add' && a[1] === '-A', result: ok('') },
+      { match: (f, a) => f === 'git' && a[0] === 'commit', result: ok('') },
+      { match: (f, a) => f === 'git' && a[0] === 'rev-parse' && a[1] === 'HEAD', result: ok('abc1234567890\n') },
+      { match: (f, a) => f === 'git' && a[0] === 'push', result: ok('') },
+      { match: (f, a) => f === 'gh' && a[0] === 'pr' && a[1] === 'view' && !a.includes('--web'), result: fail('no PR', 1) },
+      { match: (f, a) => f === 'git' && a[0] === 'diff', result: ok('diff content') },
+      { match: (f, a) => f === 'git' && a[0] === 'log', result: ok('- subject') },
+      { match: (f, a) => f === 'gh' && a[0] === 'pr' && a[1] === 'create', result: ok('https://github.com/owner/repo/pull/42\n') },
+      { match: (f, a) => f === 'gh' && a[0] === 'pr' && a[1] === 'view' && a.includes('--web'), result: ok('') }
+    ]));
+
+    const { result } = await runPr(
+      baseContext(),
+      { branch: 'feat/open', message: 'feat: open pr', ai: false, open: true },
+      { shellRunner: runner }
+    );
+
+    expect(calls.map((call) => `${call.file} ${call.args.join(' ')}`)).toContain('gh pr view feat/open --web');
+    expect(result.sections[0]?.body).toContain('Browser: opened PR in browser.');
+  });
+
   it('uses the resolved AI provider for commit message and PR body when --message is omitted', async () => {
     const provider = mockProvider(JSON.stringify({ subject: 'feat(api): add endpoint', body: 'Adds /v2/things.' }));
     const resolveAi = vi.fn(async () => provider);

@@ -103,6 +103,13 @@ export async function createPr(cwd: string, title: string, body: string, baseBra
   return match ? match[0] : result.stdout.trim();
 }
 
+export async function openPrInBrowser(cwd: string, branch: string, runner: ShellRunner = defaultShellRunner): Promise<void> {
+  const result = await runner('gh', ['pr', 'view', branch, '--web'], { cwd, timeout: 15_000 });
+  if (result.exitCode !== 0) {
+    throw new GitError(`gh pr view --web failed: ${result.stderr.trim() || result.stdout.trim()}`, result.stderr, result.exitCode);
+  }
+}
+
 export async function diffAgainst(cwd: string, base: string, runner: ShellRunner = defaultShellRunner): Promise<string> {
   const result = await runner('git', ['diff', `${base}...HEAD`], { cwd, timeout: 30_000 });
   if (result.exitCode !== 0) {

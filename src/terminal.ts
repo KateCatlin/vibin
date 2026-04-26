@@ -156,7 +156,47 @@ export function shouldUseHyperlinks(options: TerminalStyleOptions = {}): boolean
   if (env.FORCE_HYPERLINK) {
     return true;
   }
-  return options.stream?.isTTY === true;
+  if (options.stream?.isTTY !== true) {
+    return false;
+  }
+  return terminalSupportsHyperlinks(env);
+}
+
+function terminalSupportsHyperlinks(env: NodeJS.ProcessEnv): boolean {
+  // macOS Terminal.app does NOT support OSC 8 hyperlinks, and emitting them
+  // breaks its own URL auto-detection (which makes plain URLs Cmd+clickable).
+  // Only opt in for terminals known to render OSC 8 hyperlinks correctly.
+  const termProgram = env.TERM_PROGRAM;
+  if (termProgram === 'Apple_Terminal') {
+    return false;
+  }
+  if (
+    termProgram === 'iTerm.app' ||
+    termProgram === 'vscode' ||
+    termProgram === 'WezTerm' ||
+    termProgram === 'Hyper' ||
+    termProgram === 'ghostty' ||
+    termProgram === 'tabby' ||
+    termProgram === 'rio'
+  ) {
+    return true;
+  }
+  if (env.TERM === 'xterm-kitty' || env.TERM === 'alacritty' || env.TERM === 'wezterm') {
+    return true;
+  }
+  if (env.WT_SESSION) {
+    return true; // Windows Terminal
+  }
+  if (env.DOMTERM) {
+    return true;
+  }
+  if (env.VTE_VERSION) {
+    const vte = Number.parseInt(env.VTE_VERSION, 10);
+    if (Number.isFinite(vte) && vte >= 5000) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const URL_PATTERN = /\bhttps?:\/\/[^\s<>()\[\]'"`]+[^\s<>()\[\]'"`.,;:!?]/g;

@@ -29,7 +29,7 @@ describe('terminal styling', () => {
     const output = renderTerminalMarkdown(`- Pull request: created → ${url}\n`, {
       color: false,
       stream: { isTTY: true },
-      env: {}
+      env: { TERM_PROGRAM: 'iTerm.app' }
     });
 
     expect(output).toContain('\u001b]8;;');
@@ -40,5 +40,38 @@ describe('terminal styling', () => {
     const url = 'https://github.com/example/repo/pull/7';
     const markdown = `- Pull request: created → ${url}\n`;
     expect(renderTerminalMarkdown(markdown, { color: false, stream: { isTTY: false }, env: {} })).toBe(markdown);
+  });
+
+  it('skips OSC 8 hyperlinks in macOS Terminal.app so URL auto-detection still works', () => {
+    const url = 'https://github.com/example/repo/pull/7';
+    const markdown = `- Pull request: created → ${url}\n`;
+    const output = renderTerminalMarkdown(markdown, {
+      color: false,
+      stream: { isTTY: true },
+      env: { TERM_PROGRAM: 'Apple_Terminal' }
+    });
+    expect(output).toBe(markdown);
+    expect(output).not.toContain('\u001b]8;;');
+  });
+
+  it('skips OSC 8 hyperlinks for unknown terminals to avoid breaking URL auto-detection', () => {
+    const url = 'https://github.com/example/repo/pull/7';
+    const markdown = `- Pull request: created → ${url}\n`;
+    const output = renderTerminalMarkdown(markdown, {
+      color: false,
+      stream: { isTTY: true },
+      env: {}
+    });
+    expect(output).toBe(markdown);
+  });
+
+  it('honors FORCE_HYPERLINK to opt in regardless of terminal detection', () => {
+    const url = 'https://github.com/example/repo/pull/7';
+    const output = renderTerminalMarkdown(`- ${url}\n`, {
+      color: false,
+      stream: { isTTY: false },
+      env: { FORCE_HYPERLINK: '1' }
+    });
+    expect(output).toContain('\u001b]8;;');
   });
 });

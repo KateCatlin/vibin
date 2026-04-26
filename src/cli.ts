@@ -4,6 +4,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { exitCodeForResult } from './reporting/markdown.js';
 import { runCheck } from './commands/check.js';
+import { runPr } from './commands/pr.js';
 import { runSecurity } from './commands/security.js';
 import { runUi } from './commands/ui.js';
 import { runUsers } from './commands/users.js';
@@ -58,6 +59,23 @@ export function createProgram(env: NodeJS.ProcessEnv = process.env): Command {
     .action(async (options) => {
       await handleCommand(program, env, 'users', async (context, printMarkdown) => {
         const { result, markdown } = await runUsers(context, options);
+        printMarkdown(markdown);
+        return result;
+      });
+    });
+
+  program
+    .command('pr')
+    .description('Stage all changes, commit (AI-generated message), push, and open or update a PR.')
+    .option('-m, --message <message>', 'commit message subject (skips AI commit message generation)')
+    .option('-b, --branch <name>', 'branch name to create when on the default branch')
+    .option('--no-push', 'skip pushing the branch and creating a PR')
+    .option('--no-ai', 'do not call any AI backend; requires --message')
+    .option('--dry-run', 'log the steps that would run without executing git or gh writes')
+    .option('-o, --output <path>', 'write the markdown summary to a file')
+    .action(async (options) => {
+      await handleCommand(program, env, 'pr', async (context, printMarkdown) => {
+        const { result, markdown } = await runPr(context, options);
         printMarkdown(markdown);
         return result;
       });

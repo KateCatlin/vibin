@@ -171,15 +171,64 @@ vibin check --url http://localhost:3000 --goal "sign up and create a project"
 vibin check --start-command "npm run dev" --url http://localhost:3000 --output vibin-report.md
 ```
 
+### `vibin pr`
+
+One-shot **stage + commit + push + open or update PR** for the changes in your working tree. Designed for the moment you finish vibe-coding a change and just want it on GitHub.
+
+What it does, in order:
+
+1. Verifies you are in a git repo and have changes to commit.
+2. If you are on the default branch (e.g. `main`), creates a new branch — using `--branch` if given, otherwise an AI-generated kebab-case slug derived from your diff, with a timestamped fallback (`vibin/YYYY-MM-DD-HHMM`) if no AI backend is available.
+3. `git add -A`.
+4. Commits with `--message` if you passed one, otherwise asks the configured AI backend for a conventional-commit-style message generated from the staged diff. The standard `Co-authored-by: Copilot` trailer is appended.
+5. `git push -u origin <branch>` (skip with `--no-push`).
+6. If a PR already exists for the branch and is `OPEN`, prints its URL (your push already updated it). Otherwise calls `gh pr create` with an AI-generated title and body (with a `git log` fallback if no AI is available).
+
+This works without Copilot CLI: it uses the same `resolveAiProvider` as the other commands, so any of the following is enough to drive AI generation: `copilot` CLI, `gh copilot` extension, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or a saved local credential from prior onboarding. With `--no-ai` (or `--message` plus `--branch` on main), no AI backend is required at all.
+
+Requirements: `git` and the GitHub CLI (`gh`) authenticated for this repo.
+
+Options:
+
+| Option | Description |
+| --- | --- |
+| `-m, --message <msg>` | Commit subject. Skips AI commit-message generation. |
+| `-b, --branch <name>` | Branch name to create when on the default branch. |
+| `--no-push` | Commit only — do not push or open a PR. |
+| `--no-ai` | Do not call any AI backend. Requires `--message`. |
+| `--dry-run` | Print what would happen; perform no `git`/`gh` writes. |
+| `-o, --output <path>` | Write the markdown summary to a file. |
+
+Examples:
+
+```bash
+# Fully AI-driven: branch name, commit message, and PR title/body all from the diff.
+vibin pr
+
+# Provide a commit message yourself; AI still names the branch and writes the PR body.
+vibin pr -m "fix(api): handle empty payloads"
+
+# Force a branch name; skip AI entirely.
+vibin pr --branch feat/new-thing -m "feat: new thing" --no-ai
+
+# Commit locally without pushing.
+vibin pr --no-push -m "wip: spike"
+
+# See what would happen without touching anything.
+vibin pr --dry-run
+```
+
 ## Options
 
-Global option:
+Global options:
 
 | Option | Description |
 | --- | --- |
 | `--cwd <path>` | Project directory to inspect. Defaults to the current working directory. Use it before the command, for example `vibin --cwd ../my-app security`. |
 | `--quiet` | Hide progress messages. Use it before the command, for example `vibin --quiet check`. |
 | `--no-color` | Disable ANSI colors in terminal output. `NO_COLOR` and `FORCE_COLOR` are also respected. |
+| `-V, --version` | Print the installed `vibin` version. |
+| `-h, --help` | Show help for `vibin` or any subcommand (e.g. `vibin pr --help`). |
 
 Command options:
 
@@ -188,6 +237,11 @@ Command options:
 | `--url <url>` | `ui`, `users`, `check` | Running app URL. Defaults to `http://localhost:3000`; pass it explicitly to review a local server even if it appears to belong to a different project. |
 | `--start-command <command>` | `ui`, `users`, `check` | Command used to start this project before browser checks. |
 | `--goal <goal>` | `users`, `check` | Fake-user goal to attempt. Defaults to `understand the product and complete the primary call to action`. |
+| `-m, --message <message>` | `pr` | Commit message subject. Skips AI commit-message generation. |
+| `-b, --branch <name>` | `pr` | Branch name to create when on the default branch. |
+| `--no-push` | `pr` | Commit only — do not push or open a PR. |
+| `--no-ai` | `pr` | Do not call any AI backend. Requires `--message`. |
+| `--dry-run` | `pr` | Print what would happen; perform no `git`/`gh` writes. |
 | `-o, --output <path>` | all commands | Write the markdown report to a file. |
 
 ## Output

@@ -6,6 +6,6 @@ describe('createProgram', () => {
     const program = createProgram({ VIBIN_MOCK_AI_RESPONSE: 'ok' });
     const commandNames = program.commands.map((command) => command.name());
 
-    expect(commandNames).toEqual(expect.arrayContaining(['security', 'ui', 'users', 'check']));
+    expect(commandNames).toEqual(expect.arrayContaining(['security', 'ui', 'users', 'check', 'pr']));
   });
 });
